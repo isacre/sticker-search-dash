@@ -55,51 +55,87 @@ export function StickerGrid() {
   const loadedCountRef = useRef(0);
   const totalRef = useRef(0);
 
+  const isSearchMode = searchResults !== null;
   const rowCount =
-    loadedCount > 0 ? Math.ceil(loadedCount / COLUMNS) : 0;
+    loadedCount > 0
+      ? Math.ceil(loadedCount / COLUMNS)
+      : 0;
   const hasMore = total > 0 && loadedCount < total;
 
-  const loadMore = useCallback(async () => {
-    const offset = loadedCountRef.current;
-    if (loadingRef.current) return;
-    if (totalRef.current > 0 && offset >= totalRef.current) return;
+  const loadPage = useCallback(
+    async (offset: number, append: boolean) => {
+      if (loadingRef.current) return;
+      if (
+        totalRef.current > 0 &&
+        offset >= totalRef.current
+      )
+        return;
 
-    loadingRef.current = true;
-    setLoading(true);
-    setError(null);
+      loadingRef.current = true;
+      setLoading(true);
+      setError(null);
 
-    try {
-      const data = await fetchStickers(offset, PAGE_SIZE);
-      totalRef.current = data.total;
-      setTotal(data.total);
+      try {
+        const data = await fetchStickers(
+          offset,
+          PAGE_SIZE
+        );
+        totalRef.current = data.total;
+        setTotal(data.total);
 
-      const nextCount = offset + data.items.length;
-      loadedCountRef.current = nextCount;
-      setLoadedCount(nextCount);
-      setItems((prev) => [...prev, ...data.items]);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Erro ao carregar stickers",
-      );
-    } finally {
-      loadingRef.current = false;
-      setLoading(false);
-    }
-  }, []);
+        const nextCount =
+          offset + data.items.length;
+        loadedCountRef.current = nextCount;
+        setLoadedCount(nextCount);
+        setItems((prev) =>
+          append
+            ? [...prev, ...data.items]
+            : data.items
+        );
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Erro ao carregar stickers"
+        );
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  const loadMore = useCallback(() => {
+    void loadPage(loadedCountRef.current, true);
+  }, [loadPage]);
 
   const maybeLoadMore = useCallback(
     (lastVisibleRow: number) => {
-      if (totalRef.current === 0 && loadedCountRef.current === 0) return;
-      if (loadedCountRef.current >= totalRef.current && totalRef.current > 0) {
+      if (
+        totalRef.current === 0 &&
+        loadedCountRef.current === 0
+      )
+        return;
+      if (
+        loadedCountRef.current >=
+          totalRef.current &&
+        totalRef.current > 0
+      ) {
         return;
       }
 
-      const loadedRows = Math.ceil(loadedCountRef.current / COLUMNS);
-      if (lastVisibleRow >= loadedRows - LOAD_AHEAD_ROWS) {
-        void loadMore();
+      const loadedRows = Math.ceil(
+        loadedCountRef.current / COLUMNS
+      );
+      if (
+        lastVisibleRow >=
+        loadedRows - LOAD_AHEAD_ROWS
+      ) {
+        loadMore();
       }
     },
-    [loadMore],
+    [loadMore]
   );
 
   const runSearch = useCallback(async () => {
@@ -117,7 +153,9 @@ export function StickerGrid() {
     } catch (err) {
       setSearchResults(null);
       setError(
-        err instanceof Error ? err.message : "Erro na busca",
+        err instanceof Error
+          ? err.message
+          : "Erro na busca"
       );
     } finally {
       setSearching(false);
@@ -125,33 +163,8 @@ export function StickerGrid() {
   }, [searchQuery]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      loadingRef.current = true;
-      try {
-        const data = await fetchStickers(0, PAGE_SIZE);
-        if (cancelled) return;
-        totalRef.current = data.total;
-        setTotal(data.total);
-        loadedCountRef.current = data.items.length;
-        setLoadedCount(data.items.length);
-        setItems(data.items);
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err instanceof Error ? err.message : "Erro ao carregar stickers",
-        );
-      } finally {
-        loadingRef.current = false;
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void loadPage(0, false);
+  }, [loadPage]);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -159,36 +172,33 @@ export function StickerGrid() {
     estimateSize: () => ROW_HEIGHT,
     overscan: LOAD_AHEAD_ROWS,
     onChange: (instance) => {
-      const virtualItems = instance.getVirtualItems();
+      const virtualItems =
+        instance.getVirtualItems();
       if (virtualItems.length === 0) return;
-      const lastRow = virtualItems[virtualItems.length - 1]!.index;
+      const lastRow =
+        virtualItems[virtualItems.length - 1]!
+          .index;
       maybeLoadMore(lastRow);
     },
   });
-
-  useEffect(() => {
-    if (loading) return;
-    const virtualItems = virtualizer.getVirtualItems();
-    if (virtualItems.length === 0) return;
-    const lastRow = virtualItems[virtualItems.length - 1]!.index;
-    maybeLoadMore(lastRow);
-  }, [loading, loadedCount, virtualizer, maybeLoadMore]);
-
-  const displayItems: (StickerItem & { score?: number })[] =
-    searchResults ?? items;
-  const isSearchMode = searchResults !== null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
       <header className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Stickers</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Stickers
+          </h1>
           <p className="text-sm text-zinc-500">
             {isSearchMode
-              ? `${searchResults.length} resultado(s) para “${searchQuery.trim()}”`
+              ? `${searchResults.length} resultado(s)`
               : total > 0
-                ? `${loadedCount.toLocaleString("pt-BR")} / ${total.toLocaleString("pt-BR")} carregados`
-                : "Carregando catálogo…"}
+              ? `${loadedCount.toLocaleString(
+                  "pt-BR"
+                )} / ${total.toLocaleString(
+                  "pt-BR"
+                )} carregados`
+              : "Carregando catálogo…"}
           </p>
         </div>
         <form
@@ -201,13 +211,17 @@ export function StickerGrid() {
           <input
             type="search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) =>
+              setSearchQuery(e.target.value)
+            }
             placeholder="Buscar figurinhas…"
             className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500"
           />
           <button
             type="submit"
-            disabled={searching || !searchQuery.trim()}
+            disabled={
+              searching || !searchQuery.trim()
+            }
             className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {searching ? "…" : "Buscar"}
@@ -226,7 +240,9 @@ export function StickerGrid() {
           )}
         </form>
         {!isSearchMode && loading && hasMore && (
-          <span className="text-sm text-zinc-400">Carregando mais…</span>
+          <span className="text-sm text-zinc-400">
+            Carregando mais…
+          </span>
         )}
       </header>
 
@@ -239,97 +255,118 @@ export function StickerGrid() {
       {isSearchMode ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-zinc-200 bg-zinc-50 p-2">
           {searchResults.length === 0 ? (
-            <p className="p-4 text-sm text-zinc-500">Nenhum resultado.</p>
+            <p className="p-4 text-sm text-zinc-500">
+              Nenhum resultado.
+            </p>
           ) : (
             <div className="grid grid-cols-6 gap-2">
-              {displayItems.map((item) => (
+              {searchResults.map((item) => (
                 <div
                   key={item.name}
                   className="flex min-h-[140px] flex-col items-center gap-0.5"
                   title={item.name}
                 >
                   <img
-                    src={stickerImageUrl(item.url)}
+                    src={stickerImageUrl(
+                      item.url
+                    )}
                     alt={item.name}
                     loading="lazy"
                     className="min-h-0 flex-1 w-full object-contain"
                   />
-                  {isSearchMode && "score" in item && (
-                    <StickerScores
-                      score={(item as StickerSearchItem).score}
-                      nsfwScore={(item as StickerSearchItem).nsfw_score}
-                    />
-                  )}
+                  <StickerScores
+                    score={item.score}
+                    nsfwScore={item.nsfw_score}
+                  />
                 </div>
               ))}
             </div>
           )}
         </div>
       ) : (
-      <div
-        ref={parentRef}
-        className="min-h-0 flex-1 overflow-auto rounded-xl border border-zinc-200 bg-zinc-50"
-      >
-        {rowCount === 0 && loading ? (
-          <div className="grid grid-cols-6 gap-1 p-2">
-            {Array.from({ length: PAGE_SIZE }, (_, i) => (
-              <div
-                key={`skeleton-${i}`}
-                className="aspect-square animate-pulse rounded-lg bg-zinc-200"
-              />
-            ))}
-          </div>
-        ) : (
-          <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const rowIndex = virtualRow.index;
-              const rowTop = virtualRow.start;
+        <div
+          ref={parentRef}
+          className="min-h-0 flex-1 overflow-auto rounded-xl border border-zinc-200 bg-zinc-50"
+        >
+          {rowCount === 0 && loading ? (
+            <div className="grid grid-cols-6 gap-1 p-2">
+              {Array.from(
+                { length: PAGE_SIZE },
+                (_, i) => (
+                  <div
+                    key={`skeleton-${i}`}
+                    className="aspect-square animate-pulse rounded-lg bg-zinc-200"
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {virtualizer
+                .getVirtualItems()
+                .map((virtualRow) => {
+                  const rowIndex =
+                    virtualRow.index;
+                  const rowTop = virtualRow.start;
 
-              return (
-                <div
-                  key={virtualRow.key}
-                  className="absolute left-0 grid w-full grid-cols-6 gap-1 px-2"
-                  style={{
-                    height: ROW_HEIGHT,
-                    transform: `translateY(${rowTop}px)`,
-                  }}
-                >
-                  {Array.from({ length: COLUMNS }, (_, columnIndex) => {
-                    const itemIndex = rowIndex * COLUMNS + columnIndex;
-                    if (itemIndex >= loadedCount) {
-                      return (
-                        <div key={`empty-${rowIndex}-${columnIndex}`} />
-                      );
-                    }
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      className="absolute left-0 grid w-full grid-cols-6 gap-1 px-2"
+                      style={{
+                        height: ROW_HEIGHT,
+                        transform: `translateY(${rowTop}px)`,
+                      }}
+                    >
+                      {Array.from(
+                        { length: COLUMNS },
+                        (_, columnIndex) => {
+                          const itemIndex =
+                            rowIndex * COLUMNS +
+                            columnIndex;
+                          if (
+                            itemIndex >=
+                            loadedCount
+                          ) {
+                            return (
+                              <div
+                                key={`empty-${rowIndex}-${columnIndex}`}
+                              />
+                            );
+                          }
 
-                    const item = items[itemIndex];
-                    return (
-                      <div
-                        key={item.name}
-                        className="flex h-full min-h-0 items-center justify-center"
-                      >
-                        <img
-                          src={stickerImageUrl(item.url)}
-                          alt={item.name}
-                          loading="lazy"
-                          decoding="async"
-                          className="h-full w-full object-contain"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                          const item =
+                            items[itemIndex];
+                          return (
+                            <div
+                              key={item.name}
+                              className="flex h-full min-h-0 items-center justify-center"
+                            >
+                              <img
+                                src={stickerImageUrl(
+                                  item.url
+                                )}
+                                alt={item.name}
+                                loading="lazy"
+                                decoding="async"
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
