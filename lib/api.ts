@@ -31,3 +31,28 @@ export async function fetchStickers(
   }
   return response.json();
 }
+
+export type StickerSearchItem = StickerItem & {
+  score: number;
+  nsfw_score?: number | null;
+};
+
+export type StickerSearchResponse = {
+  query: string;
+  total_indexed: number;
+  items: StickerSearchItem[];
+};
+
+export async function searchStickers(query: string): Promise<StickerSearchResponse> {
+  const params = new URLSearchParams({ q: query });
+  const response = await fetch(`${API_URL}/api/v1/search?${params}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const detail =
+      typeof body.detail === "string"
+        ? body.detail
+        : `Busca falhou: ${response.status}`;
+    throw new Error(detail);
+  }
+  return response.json();
+}

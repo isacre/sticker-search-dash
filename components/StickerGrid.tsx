@@ -5,8 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchStickers,
+  searchStickers,
   stickerImageUrl,
   type StickerItem,
+  type StickerSearchItem,
 } from "@/lib/api";
 
 const COLUMNS = 6;
@@ -14,8 +16,36 @@ const ROW_HEIGHT = 160;
 const PAGE_SIZE = 120;
 const LOAD_AHEAD_ROWS = 4;
 
+function StickerScores({
+  score,
+  nsfwScore,
+}: {
+  score: number;
+  nsfwScore?: number | null;
+}) {
+  return (
+    <div className="flex w-full shrink-0 items-center justify-between gap-1 px-0.5">
+      <span className="text-xs font-bold tabular-nums text-fuchsia-600">
+        {score.toFixed(3)}
+      </span>
+      {nsfwScore != null ? (
+        <span className="text-xs font-bold tabular-nums text-orange-600">
+          {nsfwScore.toFixed(2)}
+        </span>
+      ) : (
+        <span className="text-[10px] text-zinc-400">—</span>
+      )}
+    </div>
+  );
+}
+
 export function StickerGrid() {
   const parentRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<StickerSearchItem[] | null>(
+    null,
+  );
+  const [searching, setSearching] = useState(false);
   const [total, setTotal] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [items, setItems] = useState<StickerItem[]>([]);
@@ -72,6 +102,28 @@ export function StickerGrid() {
     [loadMore],
   );
 
+  const runSearch = useCallback(async () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+
+    setSearching(true);
+    setError(null);
+    try {
+      const data = await searchStickers(q);
+      setSearchResults(data.items);
+    } catch (err) {
+      setSearchResults(null);
+      setError(
+        err instanceof Error ? err.message : "Erro na busca",
+      );
+    } finally {
+      setSearching(false);
+    }
+  }, [searchQuery]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -122,18 +174,58 @@ export function StickerGrid() {
     maybeLoadMore(lastRow);
   }, [loading, loadedCount, virtualizer, maybeLoadMore]);
 
+  const displayItems: (StickerItem & { score?: number })[] =
+    searchResults ?? items;
+  const isSearchMode = searchResults !== null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-      <header className="flex shrink-0 items-baseline justify-between gap-4">
+      <header className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Stickers</h1>
           <p className="text-sm text-zinc-500">
-            {total > 0
-              ? `${loadedCount.toLocaleString("pt-BR")} / ${total.toLocaleString("pt-BR")} carregados`
-              : "Carregando catálogo…"}
+            {isSearchMode
+              ? `${searchResults.length} resultado(s) para “${searchQuery.trim()}”`
+              : total > 0
+                ? `${loadedCount.toLocaleString("pt-BR")} / ${total.toLocaleString("pt-BR")} carregados`
+                : "Carregando catálogo…"}
           </p>
         </div>
-        {loading && hasMore && (
+        <form
+          className="flex w-full max-w-md gap-2 sm:w-auto"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void runSearch();
+          }}
+        >
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar figurinhas…"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500"
+          />
+          <button
+            type="submit"
+            disabled={searching || !searchQuery.trim()}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {searching ? "…" : "Buscar"}
+          </button>
+          {isSearchMode && (
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-600"
+              onClick={() => {
+                setSearchQuery("");
+                setSearchResults(null);
+              }}
+            >
+              Limpar
+            </button>
+          )}
+        </form>
+        {!isSearchMode && loading && hasMore && (
           <span className="text-sm text-zinc-400">Carregando mais…</span>
         )}
       </header>
@@ -144,6 +236,36 @@ export function StickerGrid() {
         </p>
       )}
 
+      {isSearchMode ? (
+        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-zinc-200 bg-zinc-50 p-2">
+          {searchResults.length === 0 ? (
+            <p className="p-4 text-sm text-zinc-500">Nenhum resultado.</p>
+          ) : (
+            <div className="grid grid-cols-6 gap-2">
+              {displayItems.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex min-h-[140px] flex-col items-center gap-0.5"
+                  title={item.name}
+                >
+                  <img
+                    src={stickerImageUrl(item.url)}
+                    alt={item.name}
+                    loading="lazy"
+                    className="min-h-0 flex-1 w-full object-contain"
+                  />
+                  {isSearchMode && "score" in item && (
+                    <StickerScores
+                      score={(item as StickerSearchItem).score}
+                      nsfwScore={(item as StickerSearchItem).nsfw_score}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
       <div
         ref={parentRef}
         className="min-h-0 flex-1 overflow-auto rounded-xl border border-zinc-200 bg-zinc-50"
@@ -208,6 +330,7 @@ export function StickerGrid() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
